@@ -1,0 +1,42 @@
+team_name: "test_team"
+robot_pose_topic: "robot_pose"
+trajectory_topic: "current_trajectory"
+laser_scan_topics: [
+  "/scan_left",
+  "/scan_right"
+]
+laser_scan_frames: [
+  "/left_hokuyo_link",
+  "/right_hokuyo_link"
+]
+map_frame: "/map"
+base_frame: "/roamfree"
+camera_image_topics: [
+  "/camera_front/image",
+  "/camera_back/image"
+]
+camera_info_topics: [
+  "/camera_front/camera_info",
+  "/camera_back/camera_info"
+]
+camera_frames: [
+  "/camera_front_link",
+  "/camera_back_link"
+]
+depth_sensor_topics: [
+  "/kinect_1/pointcloud",
+  "/kinect_2/pointcloud"
+]
+depth_sensor_frames: [
+  "/ir_front_link",
+  "/ir_back_link"
+]
+audio_topics: [
+  "/audio_left",
+  "/audio_right"
+]
+robot_to_markerset_transform: [0.575, 0.221, 0.984, 0, 0, 0, 1]
+additional_topics: [
+  "topic_1",
+  "topic_2"
+]
