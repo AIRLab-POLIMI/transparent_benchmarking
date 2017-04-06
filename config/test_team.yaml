@@ -1,5 +1,8 @@
 team_name: "test_team"
+map_topic: "/map"
+map_metadata_topic: "/map_metadata"
 robot_pose_topic: "robot_pose"
+robot_pose_with_covariance_topic: "robot_pose_with_covariance"
 trajectory_topic: "current_trajectory"
 laser_scan_topics: [
   "/scan_left",

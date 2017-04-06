@@ -1,0 +1,10 @@
+team_name: "SPQReL"
+map_topic: "/map"
+map_metadata_topic: "/map_metadata"
+robot_pose_with_covariance_topic: "/diago/amcl_pose"
+trajectory_topic: "/diago/path"
+laser_scan_topics: [
+  "/base_scan_filter",
+  "/scan_filtered",
+  "/diago/scan"
+]

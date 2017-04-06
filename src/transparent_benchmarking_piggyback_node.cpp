@@ -1,7 +1,10 @@
 #include "ros/ros.h"
 
 #include <std_msgs/String.h>
+#include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/MapMetaData.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <nav_msgs/Path.h>
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/Image.h>
@@ -20,29 +23,25 @@
 using namespace std;
 
 // standard topic names
-#define STANDARD_ROBOT_POSE_TOPIC_NAME		"/ERL/robot_pose"
-#define STANDARD_MARKERSET_POSE_TOPIC_NAME	"/ERL/markerset_pose"
-#define STANDARD_TRAJECTORY_TOPIC_NAME		"/ERL/trajectory"
-#define STANDARD_LASER_SCAN_TOPICS_NAME		"/ERL/laser_scan_"
-#define STANDARD_CAMERA_IMAGE_TOPICS_NAME	"/ERL/image_"
-#define STANDARD_CAMERA_INFO_TOPICS_NAME	"/ERL/camera_info_"
-#define STANDARD_DEPTH_SENSOR_TOPICS_NAME	"/ERL/depth_sensor_pointcloud_"
-#define STANDARD_AUDIO_TOPICS_NAME			"/ERL/audio_"
+#define STANDARD_MAP_TOPIC_NAME							"/ERL/map"
+#define STANDARD_MAP_METADATA_TOPIC_NAME				"/ERL/map_metadata"
+#define STANDARD_ROBOT_POSE_TOPIC_NAME					"/ERL/robot_pose"
+#define STANDARD_ROBOT_POSE_WITH_COVARIANCE_TOPIC_NAME	"/ERL/robot_pose_with_covariance"
+#define STANDARD_MARKERSET_POSE_TOPIC_NAME				"/ERL/markerset_pose"
+#define STANDARD_TRAJECTORY_TOPIC_NAME					"/ERL/trajectory"
+#define STANDARD_LASER_SCAN_TOPICS_NAME					"/ERL/laser_scan_"
+#define STANDARD_CAMERA_IMAGE_TOPICS_NAME				"/ERL/image_"
+#define STANDARD_CAMERA_INFO_TOPICS_NAME				"/ERL/camera_info_"
+#define STANDARD_DEPTH_SENSOR_TOPICS_NAME				"/ERL/depth_sensor_pointcloud_"
+#define STANDARD_AUDIO_TOPICS_NAME						"/ERL/audio_"
 
 // standard farme names
-#define WORLD_FRAME_NAME					"/world"
-#define STANDARD_MAP_FRAME_NAME				"/ERL/map_frame"
-#define STANDARD_BASE_FRAME_NAME			"/ERL/base_frame"
-#define STANDARD_SCAN_FRAMES_NAME			"/ERL/laser_scan_frame_"
-#define STANDARD_CAMERA_FRAMES_NAME			"/ERL/camera_frame_"
-#define STANDARD_DEPTH_SENSOR_FRAMES_NAME	"/ERL/depth_sensor_frame_"
-
-
-#define ROCKIN_ROBOTPOSE	"/robot_pose"
-#define ROCKIN_MARKERPOSE	"/markerset_pose"
-#define ROCKIN_IMAGE		"/image"
-#define ROCKIN_POINTCLOUD	"/pointcloud"
-#define ROCKIN_COMMAND		"/command"
+#define WORLD_FRAME_NAME								"/world"
+#define STANDARD_MAP_FRAME_NAME							"/ERL/map_frame"
+#define STANDARD_BASE_FRAME_NAME						"/ERL/base_frame"
+#define STANDARD_SCAN_FRAMES_NAME						"/ERL/laser_scan_frame_"
+#define STANDARD_CAMERA_FRAMES_NAME						"/ERL/camera_frame_"
+#define STANDARD_DEPTH_SENSOR_FRAMES_NAME				"/ERL/depth_sensor_frame_"
 
 #define CLEAR_CONSOLE false
 #define LOOP_RATE 1
@@ -109,6 +108,9 @@ class FrameTranslator {
 	FrameTranslator(ros::NodeHandle n_, string sourceOriginFrameName_, string sourceDestinationFrameName_, string standardOriginFrameName_, string standardDestinationFrameName_)
 			: sourceOriginFrameName(sourceOriginFrameName_), sourceDestinationFrameName(sourceDestinationFrameName_),
 			  standardOriginFrameName(standardOriginFrameName_), standardDestinationFrameName(standardDestinationFrameName_){
+		
+		if(sourceOriginFrameName.size() == 0 || sourceDestinationFrameName.size() == 0) return;
+		
 		ROS_INFO("FrameTranslator: from: [%s -> %s] to: [%s -> %s]", sourceOriginFrameName.c_str(), sourceDestinationFrameName.c_str(), standardOriginFrameName.c_str(), standardDestinationFrameName.c_str());
 		
 		tfTimer = n_.createTimer(ros::Duration(0.01), &FrameTranslator::tfTimerCallback, this);
@@ -119,7 +121,10 @@ class FrameTranslator {
 struct TopicNames {
 	string
 		teamName,
+		mapTopic,
+		mapMetadataTopic,
 		robotPoseTopic,
+		robotPoseWithCovarianceTopic,
 		trajectoryTopic,
 		mapFrame,
 		baseFrame
@@ -144,34 +149,63 @@ int main(int argc, char **argv){
 	ROS_INFO("TB_piggyback started");
 	
 	// Listeners and subscribers
-	tf_listener_ = new tf::TransformListener();
-	tf_broadcaster_ = new tf::TransformBroadcaster();
+//	tf_listener_ = new tf::TransformListener();
+//	tf_broadcaster_ = new tf::TransformBroadcaster();
 	
 	TopicNames topicNames;
 	np.getParam("/team_name", topicNames.teamName);
+	np.getParam("/map_topic", topicNames.mapTopic);
+	np.getParam("/map_metadata_topic", topicNames.mapMetadataTopic);
 	np.getParam("/robot_pose_topic", topicNames.robotPoseTopic);
+	np.getParam("/robot_pose_with_covariance_topic", topicNames.robotPoseWithCovarianceTopic);
 	np.getParam("/trajectory_topic", topicNames.trajectoryTopic);
-	np.getParam("/map_frame", topicNames.mapFrame);
-	np.getParam("/base_frame", topicNames.baseFrame);
+//	np.getParam("/map_frame", topicNames.mapFrame);
+//	np.getParam("/base_frame", topicNames.baseFrame);
 	np.getParam("/laser_scan_topics", topicNames.laserScanTopics);
-	np.getParam("/laser_scan_frames", topicNames.laserScanFrames);
+//	np.getParam("/laser_scan_frames", topicNames.laserScanFrames);
 	np.getParam("/camera_image_topics", topicNames.cameraImageTopics);
 	np.getParam("/camera_info_topics", topicNames.cameraInfoTopics);
-	np.getParam("/camera_frames", topicNames.cameraFrames);
+//	np.getParam("/camera_frames", topicNames.cameraFrames);
 	np.getParam("/depth_sensor_topics", topicNames.depthSensorTopics);
-	np.getParam("/depth_sensor_frames", topicNames.depthSensorFrames);
+//	np.getParam("/depth_sensor_frames", topicNames.depthSensorFrames);
 	np.getParam("/audio_topics", topicNames.audioTopics);
 	np.getParam("/additional_topics", topicNames.additionalTopics);
 	
+	// Instantiate map subscriber translator
+	if(topicNames.mapTopic.size()){
+		TopicTranslator<nav_msgs::OccupancyGrid>* s = new TopicTranslator<nav_msgs::OccupancyGrid>(topicNames.mapTopic, STANDARD_MAP_TOPIC_NAME);
+		s->sub = n.subscribe(topicNames.mapTopic, 1000, &TopicTranslator<nav_msgs::OccupancyGrid>::callback, s);
+		s->pub = n.advertise<nav_msgs::OccupancyGrid>(s->standardTopicName, 10);
+	}
+	
+	// Instantiate map metadata subscriber translator
+	if(topicNames.mapMetadataTopic.size()){
+		TopicTranslator<nav_msgs::MapMetaData>* s = new TopicTranslator<nav_msgs::MapMetaData>(topicNames.mapMetadataTopic, STANDARD_MAP_METADATA_TOPIC_NAME);
+		s->sub = n.subscribe(topicNames.mapMetadataTopic, 1000, &TopicTranslator<nav_msgs::MapMetaData>::callback, s);
+		s->pub = n.advertise<nav_msgs::MapMetaData>(s->standardTopicName, 10);
+	}
+	
 	// Instantiate robot pose subscriber translator
-	TopicTranslator<geometry_msgs::PoseStamped>* robotPoseSubTranslator = new TopicTranslator<geometry_msgs::PoseStamped>(topicNames.robotPoseTopic, STANDARD_ROBOT_POSE_TOPIC_NAME);
+	if(topicNames.robotPoseTopic.size()){
+		TopicTranslator<geometry_msgs::PoseStamped>* s = new TopicTranslator<geometry_msgs::PoseStamped>(topicNames.robotPoseTopic, STANDARD_ROBOT_POSE_TOPIC_NAME);
+		s->sub = n.subscribe(topicNames.robotPoseTopic, 1000, &TopicTranslator<geometry_msgs::PoseStamped>::callback, s);
+		s->pub = n.advertise<geometry_msgs::PoseStamped>(s->standardTopicName, 10);
+	}
+	
+	// Instantiate robot pose with covariance subscriber translator
+	if(topicNames.robotPoseWithCovarianceTopic.size()){
+		TopicTranslator<geometry_msgs::PoseWithCovarianceStamped>* s = new TopicTranslator<geometry_msgs::PoseWithCovarianceStamped>(topicNames.robotPoseWithCovarianceTopic, STANDARD_ROBOT_POSE_WITH_COVARIANCE_TOPIC_NAME);
+		s->sub = n.subscribe(topicNames.robotPoseWithCovarianceTopic, 1000, &TopicTranslator<geometry_msgs::PoseWithCovarianceStamped>::callback, s);
+		s->pub = n.advertise<geometry_msgs::PoseWithCovarianceStamped>(s->standardTopicName, 10);
+	}
+	
 	
 	// Instantiate trajectory subscriber translator
-	TopicTranslator<nav_msgs::Path>* trajectorySubTranslator = new TopicTranslator<nav_msgs::Path>(topicNames.trajectoryTopic, STANDARD_TRAJECTORY_TOPIC_NAME);
+	TopicTranslator<nav_msgs::Path>* trajectorySubTranslator = (topicNames.robotPoseTopic.size() ? (new TopicTranslator<nav_msgs::Path>(topicNames.trajectoryTopic, STANDARD_TRAJECTORY_TOPIC_NAME)) : NULL);
 	
 	// Instantiate map and base frame translators
-	FrameTranslator* mapFrameTranslator = new FrameTranslator(n, WORLD_FRAME_NAME, topicNames.mapFrame, WORLD_FRAME_NAME, STANDARD_MAP_FRAME_NAME);
-	FrameTranslator* baseFrameTranslator = new FrameTranslator(n, topicNames.mapFrame, topicNames.baseFrame, STANDARD_MAP_FRAME_NAME, STANDARD_BASE_FRAME_NAME);
+//	FrameTranslator* mapFrameTranslator = new FrameTranslator(n, WORLD_FRAME_NAME, topicNames.mapFrame, WORLD_FRAME_NAME, STANDARD_MAP_FRAME_NAME);
+//	FrameTranslator* baseFrameTranslator = new FrameTranslator(n, topicNames.mapFrame, topicNames.baseFrame, STANDARD_MAP_FRAME_NAME, STANDARD_BASE_FRAME_NAME);
 	
 	// Instantiate laser scan subscriber translators
 	for (int i = 0; i < topicNames.laserScanTopics.size(); i++) {
@@ -184,11 +218,11 @@ int main(int argc, char **argv){
 	}
 	
 	// Instantiate laser scan frame translators
-	for (int i = 0; i < topicNames.laserScanFrames.size(); i++) {
-		stringstream standardDestinationFrameName;
-		standardDestinationFrameName << STANDARD_SCAN_FRAMES_NAME << i;
-		new FrameTranslator(n, topicNames.baseFrame, topicNames.laserScanFrames[i], STANDARD_BASE_FRAME_NAME, standardDestinationFrameName.str());
-	}
+//	for (int i = 0; i < topicNames.laserScanFrames.size(); i++) {
+//		stringstream standardDestinationFrameName;
+//		standardDestinationFrameName << STANDARD_SCAN_FRAMES_NAME << i;
+//		new FrameTranslator(n, topicNames.baseFrame, topicNames.laserScanFrames[i], STANDARD_BASE_FRAME_NAME, standardDestinationFrameName.str());
+//	}
 	
 	// Instantiate camera image subscriber translators
 	for (int i = 0; i < topicNames.cameraImageTopics.size(); i++) {
@@ -211,11 +245,11 @@ int main(int argc, char **argv){
 	}
 	
 	// Instantiate camera frame translators
-	for (int i = 0; i < topicNames.cameraFrames.size(); i++) {
-		stringstream standardDestinationFrameName;
-		standardDestinationFrameName << STANDARD_CAMERA_FRAMES_NAME << i;
-		new FrameTranslator(n, topicNames.baseFrame, topicNames.cameraFrames[i], STANDARD_BASE_FRAME_NAME, standardDestinationFrameName.str());
-	}
+//	for (int i = 0; i < topicNames.cameraFrames.size(); i++) {
+//		stringstream standardDestinationFrameName;
+//		standardDestinationFrameName << STANDARD_CAMERA_FRAMES_NAME << i;
+//		new FrameTranslator(n, topicNames.baseFrame, topicNames.cameraFrames[i], STANDARD_BASE_FRAME_NAME, standardDestinationFrameName.str());
+//	}
 	
 	// Instantiate depth sensor subscriber translators
 	for (int i = 0; i < topicNames.depthSensorTopics.size(); i++) {
@@ -228,11 +262,11 @@ int main(int argc, char **argv){
 	}
 	
 	// Instantiate depth sensor frame translators
-	for (int i = 0; i < topicNames.depthSensorFrames.size(); i++) {
-		stringstream standardDestinationFrameName;
-		standardDestinationFrameName << STANDARD_DEPTH_SENSOR_FRAMES_NAME << i;
-		new FrameTranslator(n, topicNames.baseFrame, topicNames.depthSensorFrames[i], STANDARD_BASE_FRAME_NAME, standardDestinationFrameName.str());
-	}
+//	for (int i = 0; i < topicNames.depthSensorFrames.size(); i++) {
+//		stringstream standardDestinationFrameName;
+//		standardDestinationFrameName << STANDARD_DEPTH_SENSOR_FRAMES_NAME << i;
+//		new FrameTranslator(n, topicNames.baseFrame, topicNames.depthSensorFrames[i], STANDARD_BASE_FRAME_NAME, standardDestinationFrameName.str());
+//	}
 	
 	
 	ros::spin();
