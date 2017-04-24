@@ -12,7 +12,7 @@ add_definitions(-std=c++11)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  cv_bridge
+#  cv_bridge
   geometry_msgs
   image_transport
   nav_msgs
@@ -20,9 +20,9 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   tf
-  pcl_conversions
+#  pcl_conversions
   pcl_ros
-  OpenCV
+#  OpenCV
 )
 
 ## System dependencies are found with CMake's conventions
@@ -134,7 +134,7 @@ catkin_package(
 # include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS}
+#  ${OpenCV_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -161,7 +161,7 @@ set_target_properties(
 target_link_libraries(
   ${PROJECT_NAME}_piggyback_node
   ${catkin_LIBRARIES}
-  ${OpenCV_LIBS}
+#  ${OpenCV_LIBS}
 )
 
 #############

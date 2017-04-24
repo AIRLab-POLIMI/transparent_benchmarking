@@ -17,9 +17,12 @@
 		type="record"
 		name="piggyback_recording"
 		output="screen"
-		args='record -e "/rosout" "/rosout_agg" "/tf" "/tf_static" "/ERL/(.*)" -o /home/enrico/ERL_bags/ERL_TB'
+		args='record -a -o /home/airlab/ERL_bags/ERL_TB'
 		>
 	</node>
+	<!--
+		args='record -e "/rosout" "/rosout_agg" "/tf" "/tf_static" "/ERL/(.*)" -o /home/enrico/ERL_bags/ERL_TB'
+	-->
 	
 </launch>
 
