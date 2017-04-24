@@ -1,6 +1,7 @@
 #include "ros/ros.h"
 
 #include <std_msgs/String.h>
+#include <std_msgs/Int64.h>
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/MapMetaData.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -11,8 +12,8 @@
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/PointCloud2.h>
 
-#include "tf/transform_listener.h"
-#include <tf/transform_broadcaster.h>
+//#include "tf/transform_listener.h"
+//#include <tf/transform_broadcaster.h>
 
 #include <vector>
 #include <string>
@@ -23,6 +24,7 @@
 using namespace std;
 
 // standard topic names
+#define STANDARD_MESSAGES_COUNT_TOPIC_NAME				"/transparent_benchmarking/messages_count"
 #define STANDARD_MAP_TOPIC_NAME							"/ERL/map"
 #define STANDARD_MAP_METADATA_TOPIC_NAME				"/ERL/map_metadata"
 #define STANDARD_ROBOT_POSE_TOPIC_NAME					"/ERL/robot_pose"
@@ -35,26 +37,21 @@ using namespace std;
 #define STANDARD_DEPTH_SENSOR_TOPICS_NAME				"/ERL/depth_sensor_pointcloud_"
 #define STANDARD_AUDIO_TOPICS_NAME						"/ERL/audio_"
 
-// standard farme names
-#define WORLD_FRAME_NAME								"/world"
-#define STANDARD_MAP_FRAME_NAME							"/ERL/map_frame"
-#define STANDARD_BASE_FRAME_NAME						"/ERL/base_frame"
-#define STANDARD_SCAN_FRAMES_NAME						"/ERL/laser_scan_frame_"
-#define STANDARD_CAMERA_FRAMES_NAME						"/ERL/camera_frame_"
-#define STANDARD_DEPTH_SENSOR_FRAMES_NAME				"/ERL/depth_sensor_frame_"
-
+// other stuff
 #define CLEAR_CONSOLE false
 #define LOOP_RATE 1
 
 
 // Global variables
-tf::TransformListener* tf_listener_;
-tf::TransformBroadcaster* tf_broadcaster_;
+//tf::TransformListener* tf_listener_;
+//tf::TransformBroadcaster* tf_broadcaster_;
+std_msgs::Int64 messagesCounter;
+ros::Publisher messageCountPublisher;
 
 
 template <class T>
 class TopicTranslator {
-	TopicTranslator(){}
+	TopicTranslator() {}
 	
 	public:
 	
@@ -65,58 +62,24 @@ class TopicTranslator {
 	
 	void callback(const typename T::ConstPtr& msg) {
 		sourceMessagesCount++;
+		messagesCounter.data++;
 		
+		// publish the copy of the message with the standard name
 		T outputMsg;
 		outputMsg = *msg;
 		pub.publish(outputMsg);
+		
+		// publish the overall messages count
+		messageCountPublisher.publish(messagesCounter);
 	}
 	
-	TopicTranslator<T>(string sourceTopicName_, string standardTopicName_) : sourceTopicName(sourceTopicName_), standardTopicName(standardTopicName_){
+	TopicTranslator<T>(string sourceTopicName_, string standardTopicName_) : sourceTopicName(sourceTopicName_), standardTopicName(standardTopicName_) {
 		ROS_INFO("TopicTranslator: from: [%s] to: [%s]", sourceTopicName.c_str(), standardTopicName.c_str());
 	}
 	
 };
 
 
-class FrameTranslator {
-	FrameTranslator(){}
-	
-	public:
-	
-	ros::Timer tfTimer;
-	
-	string sourceOriginFrameName, sourceDestinationFrameName, standardOriginFrameName, standardDestinationFrameName;
-	long int sourceFramesCount = 0;
-	
-	void tfTimerCallback(const ros::TimerEvent& msg){
-		
-		tf::StampedTransform transform;
-		try {
-			
-			// TODO check transform is different? (timestamp)
-			tf_listener_->lookupTransform(sourceOriginFrameName, sourceDestinationFrameName, ros::Time(0), transform);
-			sourceFramesCount++;
-			
-			tf_broadcaster_->sendTransform(tf::StampedTransform(transform, ros::Time::now(), standardOriginFrameName, standardDestinationFrameName));
-			
-			
-		} catch (tf::TransformException ex) {
-			ROS_INFO("FrameTranslator::tfTimerCallback : tf::TransformException: %s",ex.what());
-		}
-	}
-	
-	FrameTranslator(ros::NodeHandle n_, string sourceOriginFrameName_, string sourceDestinationFrameName_, string standardOriginFrameName_, string standardDestinationFrameName_)
-			: sourceOriginFrameName(sourceOriginFrameName_), sourceDestinationFrameName(sourceDestinationFrameName_),
-			  standardOriginFrameName(standardOriginFrameName_), standardDestinationFrameName(standardDestinationFrameName_){
-		
-		if(sourceOriginFrameName.size() == 0 || sourceDestinationFrameName.size() == 0) return;
-		
-		ROS_INFO("FrameTranslator: from: [%s -> %s] to: [%s -> %s]", sourceOriginFrameName.c_str(), sourceDestinationFrameName.c_str(), standardOriginFrameName.c_str(), standardDestinationFrameName.c_str());
-		
-		tfTimer = n_.createTimer(ros::Duration(0.01), &FrameTranslator::tfTimerCallback, this);
-	}
-	
-};
 
 struct TopicNames {
 	string
@@ -125,32 +88,23 @@ struct TopicNames {
 		mapMetadataTopic,
 		robotPoseTopic,
 		robotPoseWithCovarianceTopic,
-		trajectoryTopic,
-		mapFrame,
-		baseFrame
+		trajectoryTopic
 		;
 	
 	vector<string>
 		laserScanTopics,
-		laserScanFrames,
 		cameraImageTopics,
 		cameraInfoTopics,
-		cameraFrames,
 		depthSensorTopics,
-		depthSensorFrames,
 		audioTopics,
 		additionalTopics
 		;
 };
 
-int main(int argc, char **argv){
+int main(int argc, char **argv) {
 	ros::init(argc, argv, "TB_piggyback");
 	ros::NodeHandle n, np("~");
 	ROS_INFO("TB_piggyback started");
-	
-	// Listeners and subscribers
-//	tf_listener_ = new tf::TransformListener();
-//	tf_broadcaster_ = new tf::TransformBroadcaster();
 	
 	TopicNames topicNames;
 	np.getParam("/team_name", topicNames.teamName);
@@ -159,53 +113,43 @@ int main(int argc, char **argv){
 	np.getParam("/robot_pose_topic", topicNames.robotPoseTopic);
 	np.getParam("/robot_pose_with_covariance_topic", topicNames.robotPoseWithCovarianceTopic);
 	np.getParam("/trajectory_topic", topicNames.trajectoryTopic);
-//	np.getParam("/map_frame", topicNames.mapFrame);
-//	np.getParam("/base_frame", topicNames.baseFrame);
 	np.getParam("/laser_scan_topics", topicNames.laserScanTopics);
-//	np.getParam("/laser_scan_frames", topicNames.laserScanFrames);
 	np.getParam("/camera_image_topics", topicNames.cameraImageTopics);
 	np.getParam("/camera_info_topics", topicNames.cameraInfoTopics);
-//	np.getParam("/camera_frames", topicNames.cameraFrames);
 	np.getParam("/depth_sensor_topics", topicNames.depthSensorTopics);
-//	np.getParam("/depth_sensor_frames", topicNames.depthSensorFrames);
 	np.getParam("/audio_topics", topicNames.audioTopics);
 	np.getParam("/additional_topics", topicNames.additionalTopics);
 	
 	// Instantiate map subscriber translator
-	if(topicNames.mapTopic.size()){
+	if(topicNames.mapTopic.size()) {
 		TopicTranslator<nav_msgs::OccupancyGrid>* s = new TopicTranslator<nav_msgs::OccupancyGrid>(topicNames.mapTopic, STANDARD_MAP_TOPIC_NAME);
 		s->sub = n.subscribe(topicNames.mapTopic, 1000, &TopicTranslator<nav_msgs::OccupancyGrid>::callback, s);
 		s->pub = n.advertise<nav_msgs::OccupancyGrid>(s->standardTopicName, 10);
 	}
 	
 	// Instantiate map metadata subscriber translator
-	if(topicNames.mapMetadataTopic.size()){
+	if(topicNames.mapMetadataTopic.size()) {
 		TopicTranslator<nav_msgs::MapMetaData>* s = new TopicTranslator<nav_msgs::MapMetaData>(topicNames.mapMetadataTopic, STANDARD_MAP_METADATA_TOPIC_NAME);
 		s->sub = n.subscribe(topicNames.mapMetadataTopic, 1000, &TopicTranslator<nav_msgs::MapMetaData>::callback, s);
 		s->pub = n.advertise<nav_msgs::MapMetaData>(s->standardTopicName, 10);
 	}
 	
 	// Instantiate robot pose subscriber translator
-	if(topicNames.robotPoseTopic.size()){
+	if(topicNames.robotPoseTopic.size()) {
 		TopicTranslator<geometry_msgs::PoseStamped>* s = new TopicTranslator<geometry_msgs::PoseStamped>(topicNames.robotPoseTopic, STANDARD_ROBOT_POSE_TOPIC_NAME);
 		s->sub = n.subscribe(topicNames.robotPoseTopic, 1000, &TopicTranslator<geometry_msgs::PoseStamped>::callback, s);
 		s->pub = n.advertise<geometry_msgs::PoseStamped>(s->standardTopicName, 10);
 	}
 	
 	// Instantiate robot pose with covariance subscriber translator
-	if(topicNames.robotPoseWithCovarianceTopic.size()){
+	if(topicNames.robotPoseWithCovarianceTopic.size()) {
 		TopicTranslator<geometry_msgs::PoseWithCovarianceStamped>* s = new TopicTranslator<geometry_msgs::PoseWithCovarianceStamped>(topicNames.robotPoseWithCovarianceTopic, STANDARD_ROBOT_POSE_WITH_COVARIANCE_TOPIC_NAME);
 		s->sub = n.subscribe(topicNames.robotPoseWithCovarianceTopic, 1000, &TopicTranslator<geometry_msgs::PoseWithCovarianceStamped>::callback, s);
 		s->pub = n.advertise<geometry_msgs::PoseWithCovarianceStamped>(s->standardTopicName, 10);
 	}
 	
-	
 	// Instantiate trajectory subscriber translator
 	TopicTranslator<nav_msgs::Path>* trajectorySubTranslator = (topicNames.robotPoseTopic.size() ? (new TopicTranslator<nav_msgs::Path>(topicNames.trajectoryTopic, STANDARD_TRAJECTORY_TOPIC_NAME)) : NULL);
-	
-	// Instantiate map and base frame translators
-//	FrameTranslator* mapFrameTranslator = new FrameTranslator(n, WORLD_FRAME_NAME, topicNames.mapFrame, WORLD_FRAME_NAME, STANDARD_MAP_FRAME_NAME);
-//	FrameTranslator* baseFrameTranslator = new FrameTranslator(n, topicNames.mapFrame, topicNames.baseFrame, STANDARD_MAP_FRAME_NAME, STANDARD_BASE_FRAME_NAME);
 	
 	// Instantiate laser scan subscriber translators
 	for (int i = 0; i < topicNames.laserScanTopics.size(); i++) {
@@ -216,13 +160,6 @@ int main(int argc, char **argv){
 		s->sub = n.subscribe(topicNames.laserScanTopics[i], 1000, &TopicTranslator<sensor_msgs::LaserScan>::callback, s);
 		s->pub = n.advertise<sensor_msgs::LaserScan>(s->standardTopicName, 10);
 	}
-	
-	// Instantiate laser scan frame translators
-//	for (int i = 0; i < topicNames.laserScanFrames.size(); i++) {
-//		stringstream standardDestinationFrameName;
-//		standardDestinationFrameName << STANDARD_SCAN_FRAMES_NAME << i;
-//		new FrameTranslator(n, topicNames.baseFrame, topicNames.laserScanFrames[i], STANDARD_BASE_FRAME_NAME, standardDestinationFrameName.str());
-//	}
 	
 	// Instantiate camera image subscriber translators
 	for (int i = 0; i < topicNames.cameraImageTopics.size(); i++) {
@@ -244,13 +181,6 @@ int main(int argc, char **argv){
 		s->pub = n.advertise<sensor_msgs::CameraInfo>(s->standardTopicName, 10);
 	}
 	
-	// Instantiate camera frame translators
-//	for (int i = 0; i < topicNames.cameraFrames.size(); i++) {
-//		stringstream standardDestinationFrameName;
-//		standardDestinationFrameName << STANDARD_CAMERA_FRAMES_NAME << i;
-//		new FrameTranslator(n, topicNames.baseFrame, topicNames.cameraFrames[i], STANDARD_BASE_FRAME_NAME, standardDestinationFrameName.str());
-//	}
-	
 	// Instantiate depth sensor subscriber translators
 	for (int i = 0; i < topicNames.depthSensorTopics.size(); i++) {
 		stringstream standardTopicName;
@@ -261,13 +191,7 @@ int main(int argc, char **argv){
 		s->pub = n.advertise<sensor_msgs::PointCloud2>(s->standardTopicName, 10);
 	}
 	
-	// Instantiate depth sensor frame translators
-//	for (int i = 0; i < topicNames.depthSensorFrames.size(); i++) {
-//		stringstream standardDestinationFrameName;
-//		standardDestinationFrameName << STANDARD_DEPTH_SENSOR_FRAMES_NAME << i;
-//		new FrameTranslator(n, topicNames.baseFrame, topicNames.depthSensorFrames[i], STANDARD_BASE_FRAME_NAME, standardDestinationFrameName.str());
-//	}
-	
+	messageCountPublisher = n.advertise<std_msgs::Int64>(STANDARD_MESSAGES_COUNT_TOPIC_NAME, 10);
 	
 	ros::spin();
 	
@@ -282,7 +206,7 @@ int main(int argc, char **argv){
   *		· test images (and depthmaps?)
   *		· test pointclouds
   *		· test audio
-  *		· publish markerset pose and frame
+  *		· publish markerset pose ?
   *		· publish and record benchmark metadata (team_name, benchmark, configuration, etc)
   *		· use actual rulebook topic names
   *	
