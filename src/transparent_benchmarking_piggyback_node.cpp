@@ -16,15 +16,20 @@
 //#include <tf/transform_broadcaster.h>
 
 #include <vector>
+#include <map>
 #include <string>
 #include <sstream>
 
-
-
 using namespace std;
 
+
+// metadata topics names
+#define BENCHMARK_NAME_TOPIC_NAME						"/transparent_benchmarking/benchmark"
+#define TEAM_NAME_TOPIC_NAME							"/transparent_benchmarking/team_name"
+#define OVERALL_MESSAGES_COUNT_TOPIC_NAME				"/transparent_benchmarking/overall_messages_count"
+#define MESSAGES_COUNT_TOPIC_NAME						"/transparent_benchmarking/messages_count"
+
 // standard topic names
-#define STANDARD_MESSAGES_COUNT_TOPIC_NAME				"/transparent_benchmarking/messages_count"
 #define STANDARD_MAP_TOPIC_NAME							"/ERL/map"
 #define STANDARD_MAP_METADATA_TOPIC_NAME				"/ERL/map_metadata"
 #define STANDARD_ROBOT_POSE_TOPIC_NAME					"/ERL/robot_pose"
@@ -42,12 +47,26 @@ using namespace std;
 #define LOOP_RATE 1
 
 
+
 // Global variables
 //tf::TransformListener* tf_listener_;
 //tf::TransformBroadcaster* tf_broadcaster_;
-std_msgs::Int64 messagesCounter;
-ros::Publisher messageCountPublisher;
+std_msgs::Int64 overallMessagesCount;
+ros::Publisher overallMessagesCountPublisher;
+map<string, long int> messagesCount;
+ros::Publisher messagesCountPublisher;
 
+void publishMessagesCounters(){
+	// publish the overall messages count
+	overallMessagesCountPublisher.publish(overallMessagesCount);
+	
+	// make string with per-topic message count and publish it
+	std_msgs::String s;
+	stringstream ss;
+	for(auto t_c : messagesCount) ss << t_c.first << ":\t" << t_c.second << endl;
+	s.data = ss.str();
+	messagesCountPublisher.publish(s);
+}
 
 template <class T>
 class TopicTranslator {
@@ -61,20 +80,22 @@ class TopicTranslator {
 	ros::Publisher pub;
 	
 	void callback(const typename T::ConstPtr& msg) {
+		messagesCount[standardTopicName]++;
 		sourceMessagesCount++;
-		messagesCounter.data++;
+		overallMessagesCount.data++;
 		
 		// publish the copy of the message with the standard name
 		T outputMsg;
 		outputMsg = *msg;
 		pub.publish(outputMsg);
 		
-		// publish the overall messages count
-		messageCountPublisher.publish(messagesCounter);
+		publishMessagesCounters();
 	}
 	
 	TopicTranslator<T>(string sourceTopicName_, string standardTopicName_) : sourceTopicName(sourceTopicName_), standardTopicName(standardTopicName_) {
-		ROS_INFO("TopicTranslator: from: [%s] to: [%s]", sourceTopicName.c_str(), standardTopicName.c_str());
+		ROS_INFO("TopicTranslator from: [%s] to: [%s]", sourceTopicName.c_str(), standardTopicName.c_str());
+		
+		messagesCount[standardTopicName] = 0;
 	}
 	
 };
@@ -84,6 +105,7 @@ class TopicTranslator {
 struct TopicNames {
 	string
 		teamName,
+		benchmarkName,
 		mapTopic,
 		mapMetadataTopic,
 		robotPoseTopic,
@@ -108,6 +130,7 @@ int main(int argc, char **argv) {
 	
 	TopicNames topicNames;
 	np.getParam("/team_name", topicNames.teamName);
+	np.getParam("/benchmark_name", topicNames.benchmarkName);
 	np.getParam("/map_topic", topicNames.mapTopic);
 	np.getParam("/map_metadata_topic", topicNames.mapMetadataTopic);
 	np.getParam("/robot_pose_topic", topicNames.robotPoseTopic);
@@ -191,7 +214,19 @@ int main(int argc, char **argv) {
 		s->pub = n.advertise<sensor_msgs::PointCloud2>(s->standardTopicName, 10);
 	}
 	
-	messageCountPublisher = n.advertise<std_msgs::Int64>(STANDARD_MESSAGES_COUNT_TOPIC_NAME, 10);
+	overallMessagesCountPublisher = n.advertise<std_msgs::Int64>(OVERALL_MESSAGES_COUNT_TOPIC_NAME, 10);
+	messagesCountPublisher = n.advertise<std_msgs::String>(MESSAGES_COUNT_TOPIC_NAME, 10);
+	
+	ros::Publisher teamNamePublisher = n.advertise<std_msgs::String>(TEAM_NAME_TOPIC_NAME, 10, true);
+	ros::Publisher benchmarkNamePublisher = n.advertise<std_msgs::String>(BENCHMARK_NAME_TOPIC_NAME, 10, true);
+	
+	std_msgs::String benchmarkNameMessage;
+	benchmarkNameMessage.data = topicNames.benchmarkName;
+	benchmarkNamePublisher.publish(benchmarkNameMessage);
+	
+	std_msgs::String teamNameMessage;
+	teamNameMessage.data = topicNames.teamName;
+	teamNamePublisher.publish(teamNameMessage);
 	
 	ros::spin();
 	

@@ -1,5 +1,7 @@
 <launch>
 	
+	<param name="benchmark_name" value="$(arg benchmark_name)" />
+	
 	<rosparam
 		command="load"
 		file="$(find transparent_benchmarking)/config/$(arg team_name).yaml"
@@ -17,7 +19,7 @@
 		type="record"
 		name="piggyback_recording"
 		output="screen"
-		args='record -a -o /home/airlab/ERL_bags/ERL_TB'
+		args='record -a -o /home/enrico/ERL_bags/ERL_TB'
 		>
 	</node>
 	<!--
